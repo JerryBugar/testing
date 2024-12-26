@@ -10,17 +10,21 @@ def setup_environment():
     try:
         # Install Python dependencies
         print("[*] Installing Python packages...")
-        subprocess.run(['pip', 'install', 'beautifulsoup4', 'requests', 'tqdm', 'pyjwt', 'aiohttp', 'asyncio'], check=True)
+        subprocess.run(['pip', 'install', 'beautifulsoup4', 'requests', 'tqdm', 'pyjwt', 'aiohttp', 'asyncio', 
+                       'dnspython', 'python-nmap', 'paramiko', 'cryptography'], check=True)
         
-        # Install Node.js dan npm
-        print("[*] Installing Node.js and npm...")
+        # Install system packages
+        print("[*] Installing system packages...")
         subprocess.run(['apt-get', 'update'], check=True)
-        subprocess.run(['apt-get', 'install', '-y', 'nodejs', 'npm'], check=True)
-        subprocess.run(['npm', 'install', '-g', 'wappalyzer'], check=True)
+        subprocess.run(['apt-get', 'install', '-y', 'nodejs', 'npm', 'nmap', 'masscan', 'whois', 'dnsutils', 
+                       'curl', 'git', 'ruby', 'python3-dev', 'libssl-dev', 'libffi-dev', 'build-essential'], check=True)
+        
+        # Install Node.js tools
+        print("[*] Installing Node.js tools...")
+        subprocess.run(['npm', 'install', '-g', 'wappalyzer', 'nuclei', 'snyk'], check=True)
         
         # Install Rust
         print("[*] Installing Rust...")
-        subprocess.run(['apt-get', 'install', '-y', 'curl'], check=True)
         subprocess.run(['curl', '--proto', '=https', '--tlsv1.2', '-sSf', 'https://sh.rustup.rs', '-o', 'rustup.sh'], check=True)
         subprocess.run(['chmod', '+x', 'rustup.sh'], check=True)
         subprocess.run(['./rustup.sh', '-y'], check=True)
@@ -28,11 +32,54 @@ def setup_environment():
         # Setup Go environment
         print("[*] Setting up Go environment...")
         subprocess.run(['apt-get', 'install', '-y', 'golang-go'], check=True)
-        os.environ['GO111MODULE'] = 'on'
         
-        # Create Go module
-        subprocess.run(['go', 'mod', 'init', 'scanner'], check=True)
-        subprocess.run(['go', 'get', 'github.com/projectdiscovery/subfinder/v2/cmd/subfinder'], check=True)
+        # Set Go environment variables
+        home = os.path.expanduser("~")
+        os.environ['GOPATH'] = os.path.join(home, 'go')
+        os.environ['GOROOT'] = '/usr/lib/go'
+        os.environ['GO111MODULE'] = 'on'
+        os.environ['PATH'] = os.environ['PATH'] + ':' + os.path.join(home, 'go', 'bin')
+        
+        # Create Go workspace
+        os.makedirs(os.path.join(home, 'go', 'bin'), exist_ok=True)
+        os.makedirs(os.path.join(home, 'go', 'src'), exist_ok=True)
+        os.makedirs(os.path.join(home, 'go', 'pkg'), exist_ok=True)
+        
+        # Install Go tools using direct download
+        print("[*] Installing Go tools...")
+        try:
+            # Install subfinder
+            subprocess.run(['go', 'install', '-v', 'github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest'], check=True)
+        except:
+            print("[!] Failed to install subfinder via go install, trying alternative method...")
+            subprocess.run(['wget', 'https://github.com/projectdiscovery/subfinder/releases/download/v2.6.3/subfinder_2.6.3_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['tar', '-xzvf', 'subfinder_2.6.3_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['mv', 'subfinder', '/usr/local/bin/'], check=True)
+            subprocess.run(['rm', 'subfinder_2.6.3_linux_amd64.tar.gz'], check=True)
+        
+        try:
+            # Install nuclei
+            subprocess.run(['go', 'install', '-v', 'github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest'], check=True)
+        except:
+            print("[!] Failed to install nuclei via go install, trying alternative method...")
+            subprocess.run(['wget', 'https://github.com/projectdiscovery/nuclei/releases/download/v3.1.4/nuclei_3.1.4_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['tar', '-xzvf', 'nuclei_3.1.4_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['mv', 'nuclei', '/usr/local/bin/'], check=True)
+            subprocess.run(['rm', 'nuclei_3.1.4_linux_amd64.tar.gz'], check=True)
+        
+        try:
+            # Install httpx
+            subprocess.run(['go', 'install', '-v', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'], check=True)
+        except:
+            print("[!] Failed to install httpx via go install, trying alternative method...")
+            subprocess.run(['wget', 'https://github.com/projectdiscovery/httpx/releases/download/v1.3.7/httpx_1.3.7_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['tar', '-xzvf', 'httpx_1.3.7_linux_amd64.tar.gz'], check=True)
+            subprocess.run(['mv', 'httpx', '/usr/local/bin/'], check=True)
+            subprocess.run(['rm', 'httpx_1.3.7_linux_amd64.tar.gz'], check=True)
+        
+        # Install Ruby tools
+        print("[*] Installing Ruby tools...")
+        subprocess.run(['gem', 'install', 'wpscan'], check=True)
         
         print("[+] Environment setup completed successfully!")
         return True
@@ -155,6 +202,39 @@ def create_rust_scanner():
     with open('port_scanner.rs', 'w') as f:
         f.write(rust_code)
 
+def create_nuclei_scanner():
+    """Membuat script untuk Nuclei scanning"""
+    subprocess.run(['nuclei', '-update-templates'], check=True)
+    subprocess.run(['nuclei', '-update'], check=True)
+
+def create_advanced_port_scanner():
+    """Membuat script untuk advanced port scanning"""
+    nmap_script = """
+    import nmap
+    import json
+    import sys
+    
+    def scan_target(target):
+        nm = nmap.PortScanner()
+        nm.scan(target, arguments='-sS -sV -sC -A -O -p-')
+        
+        results = {
+            'tcp': nm[target].get('tcp', {}),
+            'os': nm[target].get('osmatch', []),
+            'hostnames': nm[target].get('hostnames', []),
+            'status': nm[target].get('status', {})
+        }
+        
+        print(json.dumps(results))
+    
+    if __name__ == '__main__':
+        if len(sys.argv) > 1:
+            scan_target(sys.argv[1])
+    """
+    
+    with open('advanced_port_scanner.py', 'w') as f:
+        f.write(nmap_script)
+
 class AdvancedScanner:
     def __init__(self):
         if not setup_environment():
@@ -164,6 +244,8 @@ class AdvancedScanner:
         create_js_scanner()
         create_go_scanner()
         create_rust_scanner()
+        create_nuclei_scanner()
+        create_advanced_port_scanner()
         
         # Compile Rust scanner with error handling
         try:
@@ -195,13 +277,44 @@ class AdvancedScanner:
         
         return open_ports
     
+    def scan_with_nuclei(self, url):
+        """Menjalankan Nuclei scanner"""
+        try:
+            result = subprocess.run(['nuclei', '-u', url, '-json'], 
+                                  capture_output=True, text=True, check=True)
+            return json.loads(result.stdout)
+        except:
+            return None
+    
+    def scan_with_httpx(self, url):
+        """Menjalankan httpx untuk probe web server"""
+        try:
+            result = subprocess.run(['httpx', '-u', url, '-json'], 
+                                  capture_output=True, text=True, check=True)
+            return json.loads(result.stdout)
+        except:
+            return None
+    
+    def scan_wordpress(self, url):
+        """Menjalankan WPScan jika target adalah WordPress"""
+        try:
+            result = subprocess.run(['wpscan', '--url', url, '--format', 'json'],
+                                  capture_output=True, text=True, check=True)
+            return json.loads(result.stdout)
+        except:
+            return None
+    
     def scan_with_all_tools(self, url):
         """Menjalankan semua scanner dengan error handling"""
         results = {
             'python_scan': None,
             'js_tech_detect': None,
             'go_subdomains': None,
-            'ports': None
+            'ports': None,
+            'nuclei': None,
+            'httpx': None,
+            'wordpress': None,
+            'advanced_ports': None
         }
         
         # Python scan
@@ -218,30 +331,44 @@ class AdvancedScanner:
             js_result = subprocess.run(['node', 'tech_detector.js', url], 
                                      capture_output=True, text=True, check=True)
             results['js_tech_detect'] = json.loads(js_result.stdout)
+            
+            # If WordPress is detected, run WPScan
+            if any('WordPress' in tech.get('name', '') for tech in results['js_tech_detect'].get('technologies', [])):
+                print("[*] WordPress detected, running WPScan...")
+                results['wordpress'] = self.scan_wordpress(url)
         except Exception as e:
             print(f"[!] Error in JavaScript scanner: {str(e)}")
         
         # Go subdomain enumeration
         try:
             print("[*] Running Go subdomain enumeration...")
-            go_result = subprocess.run(['go', 'run', 'subdomain_enum.go', url],
+            go_result = subprocess.run(['subfinder', '-d', urllib.parse.urlparse(url).netloc],
                                      capture_output=True, text=True, check=True)
             results['go_subdomains'] = go_result.stdout.splitlines()
         except Exception as e:
             print(f"[!] Error in Go scanner: {str(e)}")
         
-        # Port scanning (Rust or Python fallback)
-        print("[*] Running port scanner...")
+        # Advanced port scanning
+        print("[*] Running advanced port scanner...")
         try:
-            if self.use_rust:
-                rust_result = subprocess.run(['./port_scanner', url],
-                                           capture_output=True, text=True, check=True)
-                results['ports'] = rust_result.stdout.splitlines()
-            else:
-                print("[*] Using Python port scanner fallback...")
-                results['ports'] = self.fallback_port_scan(urllib.parse.urlparse(url).netloc)
+            advanced_result = subprocess.run(['python3', 'advanced_port_scanner.py', url],
+                                          capture_output=True, text=True, check=True)
+            results['advanced_ports'] = json.loads(advanced_result.stdout)
         except Exception as e:
-            print(f"[!] Error in port scanner: {str(e)}")
+            print(f"[!] Error in advanced port scanner: {str(e)}")
+            
+            # Fallback to basic port scan
+            if not results['advanced_ports']:
+                print("[*] Using basic port scanner fallback...")
+                results['ports'] = self.fallback_port_scan(urllib.parse.urlparse(url).netloc)
+        
+        # Nuclei scanning
+        print("[*] Running Nuclei scanner...")
+        results['nuclei'] = self.scan_with_nuclei(url)
+        
+        # HTTPX probing
+        print("[*] Running HTTPX probe...")
+        results['httpx'] = self.scan_with_httpx(url)
         
         return results
     
